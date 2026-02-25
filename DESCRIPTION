@@ -2,7 +2,7 @@ Package: blockjack
 Type: Package
 Title: Fast Block Jackknife for Linear Regression
 Version: 0.1.0
-Authors@R: person(given = "Michel", family = "Nivard", role = c("aut", "cre"), email = "michel@example.com")
+Authors@R: person(given = "Michel", family = "Nivard", role = c("aut", "cre"), email = "m.g.nivard@bristol.ac.uk")
 Description: Fast block jackknife standard errors for linear regression.
     The implementation precomputes block-wise crossproducts and reuses them
     for leave-one-block-out estimates.
