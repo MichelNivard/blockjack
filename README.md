@@ -71,6 +71,42 @@ fit_wls <- bjlm(y ~ x1 + x2, data = d, weights = w, n_blocks = 200)
 summary(fit_wls)
 ```
 
+Cluster-robust block jackknife example:
+
+```r
+set.seed(3)
+n <- 20000
+cluster_size <- 10
+n_clusters <- n / cluster_size
+cl <- rep(seq_len(n_clusters), each = cluster_size)
+
+g1 <- rep(rnorm(n_clusters), each = cluster_size)
+g2 <- rep(rnorm(n_clusters), each = cluster_size)
+x1 <- sqrt(0.8) * g1 + sqrt(0.2) * rnorm(n)
+x2 <- sqrt(0.8) * g2 + sqrt(0.2) * rnorm(n)
+u <- rep(rnorm(n_clusters, sd = 2), each = cluster_size)
+y <- 0.5 + 0.7 * x1 - 0.2 * x2 + u + rnorm(n)
+d <- data.frame(y = y, x1 = x1, x2 = x2, cl = cl)
+
+# clusters are kept intact when forming jackknife blocks
+fit_cl <- bjlm(y ~ x1 + x2, data = d, cluster = "cl", n_blocks = 200)
+summary(fit_cl)
+```
+
+Cluster notes:
+
+1. When `cluster` is supplied, `bjlm()` assigns whole clusters to jackknife blocks (no cluster is split).
+2. It warns if `n_clusters < n_blocks` and automatically reduces blocks to `n_clusters`.
+3. It warns if the largest cluster exceeds `n / n_blocks`.
+
+Validation summary (100 simulations, `N=20000`, cluster size `10`, strong within-cluster correlation):
+
+1. Ratio `JK SE / vcovCL SE` quantiles (5%, 50%, 95%)
+   `(Intercept)`: `0.9398, 0.9955, 1.0763`
+   `x1`: `0.9191, 1.0007, 1.0657`
+   `x2`: `0.9174, 0.9966, 1.0825`
+2. In the same setup, `vcovCL` SEs were much larger than OLS SEs (median `vcovCL / OLS` around `2.59` for slopes), so this is a non-trivial clustered setting.
+
 Example output (OLS):
 
 ```text
