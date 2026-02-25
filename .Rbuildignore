@@ -1,0 +1,3 @@
+^benchmark_block_jk\\.R$
+^block_jackknife_lm_fast\\.R$
+^README\\.md$

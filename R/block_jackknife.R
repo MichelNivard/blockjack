@@ -1,0 +1,172 @@
+# Fast block jackknife for linear regression.
+#
+# block_jackknife_fit() is the matrix interface.
+# bjlm() is a formula/data wrapper with an lm-like summary.
+
+block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_delete = TRUE) {
+  X <- as.matrix(X)
+  y <- as.numeric(y)
+  n <- nrow(X)
+  p <- ncol(X)
+  stopifnot(length(y) == n, p <= n)
+
+  if (is.null(separators)) {
+    separators <- floor(seq(0L, n, length.out = n_blocks + 1L))
+    separators[length(separators)] <- n
+  }
+
+  n_blocks <- length(separators) - 1L
+  stopifnot(n_blocks >= 2L, separators[1] == 0L, separators[length(separators)] == n)
+
+  XtY_blk <- matrix(0, n_blocks, p)
+  XtX_blk <- array(0, dim = c(n_blocks, p, p))
+  XtY_tot <- numeric(p)
+  XtX_tot <- matrix(0, p, p)
+
+  for (b in seq_len(n_blocks)) {
+    i0 <- separators[b] + 1L
+    i1 <- separators[b + 1L]
+    idx <- i0:i1
+    Xb <- X[idx, , drop = FALSE]
+    yb <- y[idx]
+
+    xty <- drop(crossprod(Xb, yb))
+    xtx <- crossprod(Xb)
+    XtY_blk[b, ] <- xty
+    XtX_blk[b, , ] <- xtx
+    XtY_tot <- XtY_tot + xty
+    XtX_tot <- XtX_tot + xtx
+  }
+
+  est <- solve(XtX_tot, XtY_tot)
+
+  if (keep_delete) {
+    delete_vals <- matrix(0, n_blocks, p)
+  } else {
+    delete_vals <- NULL
+  }
+  pseudo <- matrix(0, n_blocks, p)
+
+  for (b in seq_len(n_blocks)) {
+    beta_b <- solve(XtX_tot - XtX_blk[b, , ], XtY_tot - XtY_blk[b, ])
+    if (keep_delete) {
+      delete_vals[b, ] <- beta_b
+    }
+    pseudo[b, ] <- n_blocks * est - (n_blocks - 1L) * beta_b
+  }
+
+  pseudo_centered <- sweep(pseudo, 2L, colMeans(pseudo), "-")
+  cov_jk <- crossprod(pseudo_centered) / ((n_blocks - 1L) * n_blocks)
+  se_jk <- sqrt(diag(cov_jk))
+
+  list(
+    coefficients = est,
+    se = se_jk,
+    cov = cov_jk,
+    delete_values = delete_vals,
+    separators = separators,
+    n = n,
+    p = p,
+    n_blocks = n_blocks
+  )
+}
+
+bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
+                 na.action = na.omit, keep_delete = FALSE) {
+  cl <- match.call()
+
+  if (inherits(formula, "formula")) {
+    mf <- stats::model.frame(formula = formula, data = data, na.action = na.action)
+    mt <- stats::terms(mf)
+    y <- stats::model.response(mf)
+    X <- stats::model.matrix(mt, mf)
+    coef_names <- colnames(X)
+  } else {
+    # Matrix interface through this wrapper: bjlm(X, y, ...)
+    X <- as.matrix(formula)
+    y <- as.numeric(data)
+    if (is.null(colnames(X))) {
+      coef_names <- paste0("V", seq_len(ncol(X)))
+      colnames(X) <- coef_names
+    } else {
+      coef_names <- colnames(X)
+    }
+    mt <- NULL
+    mf <- NULL
+  }
+
+  fit <- block_jackknife_fit(
+    X = X,
+    y = y,
+    n_blocks = n_blocks,
+    separators = separators,
+    keep_delete = keep_delete
+  )
+
+  names(fit$coefficients) <- coef_names
+  names(fit$se) <- coef_names
+  dimnames(fit$cov) <- list(coef_names, coef_names)
+
+  fit$call <- cl
+  fit$terms <- mt
+  fit$model <- mf
+  fit$fitted.values <- drop(X %*% fit$coefficients)
+  fit$residuals <- y - fit$fitted.values
+  fit$df.residual <- nrow(X) - ncol(X)
+  fit$rank <- ncol(X)
+  fit$coeff_names <- coef_names
+  class(fit) <- "bjlm"
+  fit
+}
+
+summary.bjlm <- function(object, ...) {
+  z <- object$coefficients / object$se
+  p <- 2 * stats::pnorm(abs(z), lower.tail = FALSE)
+  tab <- cbind(
+    Estimate = object$coefficients,
+    `Jackknife SE` = object$se,
+    `z value` = z,
+    `Pr(>|z|)` = p
+  )
+
+  out <- list(
+    call = object$call,
+    coefficients = tab,
+    sigma = sqrt(sum(object$residuals^2) / max(1, object$df.residual)),
+    df = c(object$rank, object$df.residual),
+    n_blocks = object$n_blocks
+  )
+  class(out) <- "summary.bjlm"
+  out
+}
+
+print.bjlm <- function(x, digits = max(3L, getOption("digits") - 3L), ...) {
+  cat("Call:\n")
+  print(x$call)
+  cat("\nCoefficients:\n")
+  stats::printCoefmat(cbind(Estimate = x$coefficients, `Jackknife SE` = x$se), digits = digits)
+  invisible(x)
+}
+
+print.summary.bjlm <- function(x, digits = max(3L, getOption("digits") - 3L), ...) {
+  cat("Call:\n")
+  print(x$call)
+  cat("\nCoefficients:\n")
+  stats::printCoefmat(x$coefficients, digits = digits, signif.stars = getOption("show.signif.stars"))
+  cat(
+    sprintf(
+      "\nResidual standard error: %.4f on %d degrees of freedom\n",
+      x$sigma,
+      x$df[2]
+    )
+  )
+  cat(sprintf("Jackknife blocks: %d\n", x$n_blocks))
+  invisible(x)
+}
+
+# Backward-compatible alias.
+block_jackknife_lm <- bjlm
+
+summary.block_jackknife_lm <- summary.bjlm
+print.block_jackknife_lm <- print.bjlm
+print.summary.block_jackknife_lm <- print.summary.bjlm
