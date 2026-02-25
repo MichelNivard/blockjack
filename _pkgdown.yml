@@ -1,0 +1,16 @@
+url: https://michelnivard.github.io/blockjack/
+development:
+  mode: unreleased
+template:
+  bootstrap: 5
+home:
+  title: blockjack
+navbar:
+  structure:
+    left: [home, articles]
+    right: [github]
+  components:
+    github:
+      icon: fab fa-github
+      aria-label: GitHub repository
+      href: https://github.com/MichelNivard/blockjack

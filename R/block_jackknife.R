@@ -4,7 +4,7 @@
 # bjlm() is a formula/data wrapper with an lm-like summary.
 
 block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_delete = TRUE,
-                                weights = NULL) {
+                                weights = NULL, block_id = NULL) {
   X <- as.matrix(X)
   y <- as.numeric(y)
   n <- nrow(X)
@@ -17,13 +17,25 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
     stopifnot(length(weights) == n, all(is.finite(weights)), all(weights > 0))
   }
 
-  if (is.null(separators)) {
-    separators <- floor(seq(0L, n, length.out = n_blocks + 1L))
-    separators[length(separators)] <- n
+  if (is.null(block_id)) {
+    if (is.null(separators)) {
+      separators <- floor(seq(0L, n, length.out = n_blocks + 1L))
+      separators[length(separators)] <- n
+    }
+    n_blocks <- length(separators) - 1L
+    stopifnot(n_blocks >= 2L, separators[1] == 0L, separators[length(separators)] == n)
+    block_index <- vector("list", n_blocks)
+    for (b in seq_len(n_blocks)) {
+      block_index[[b]] <- (separators[b] + 1L):separators[b + 1L]
+    }
+  } else {
+    block_id <- as.integer(as.factor(block_id))
+    stopifnot(length(block_id) == n)
+    n_blocks <- length(unique(block_id))
+    stopifnot(n_blocks >= 2L)
+    separators <- NULL
+    block_index <- split(seq_len(n), block_id)
   }
-
-  n_blocks <- length(separators) - 1L
-  stopifnot(n_blocks >= 2L, separators[1] == 0L, separators[length(separators)] == n)
 
   XtY_blk <- matrix(0, n_blocks, p)
   XtX_blk <- array(0, dim = c(n_blocks, p, p))
@@ -31,9 +43,7 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
   XtX_tot <- matrix(0, p, p)
 
   for (b in seq_len(n_blocks)) {
-    i0 <- separators[b] + 1L
-    i1 <- separators[b + 1L]
-    idx <- i0:i1
+    idx <- block_index[[b]]
     Xb <- X[idx, , drop = FALSE]
     yb <- y[idx]
     wb <- sqrt(weights[idx])
@@ -75,6 +85,7 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
     cov = cov_jk,
     delete_values = delete_vals,
     separators = separators,
+    block_id = block_id,
     weights = weights,
     n = n,
     p = p,
@@ -83,7 +94,7 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
 }
 
 bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
-                 na.action = na.omit, keep_delete = FALSE, weights = NULL) {
+                 na.action = na.omit, keep_delete = FALSE, weights = NULL, cluster = NULL) {
   cl <- match.call()
 
   if (inherits(formula, "formula")) {
@@ -113,6 +124,28 @@ bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
       }
       w <- w_all[idx]
     }
+    if (is.null(cluster)) {
+      cluster_vec <- NULL
+    } else {
+      if (is.character(cluster) && length(cluster) == 1L && !is.null(data)) {
+        cluster_all <- data[[cluster]]
+      } else {
+        cluster_all <- cluster
+      }
+      if (!is.null(data)) {
+        data_rows <- rownames(data)
+        if (is.null(data_rows)) {
+          data_rows <- as.character(seq_len(nrow(data)))
+        }
+        idx <- match(rownames(mf), data_rows)
+      } else {
+        idx <- as.integer(rownames(mf))
+      }
+      if (anyNA(idx)) {
+        stop("Could not align cluster variable with model frame rows.")
+      }
+      cluster_vec <- cluster_all[idx]
+    }
     coef_names <- colnames(X)
   } else {
     # Matrix interface through this wrapper: bjlm(X, y, ...)
@@ -122,6 +155,11 @@ bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
       w <- rep(1, nrow(X))
     } else {
       w <- as.numeric(weights)
+    }
+    if (is.null(cluster)) {
+      cluster_vec <- NULL
+    } else {
+      cluster_vec <- cluster
     }
     if (is.null(colnames(X))) {
       coef_names <- paste0("V", seq_len(ncol(X)))
@@ -133,13 +171,57 @@ bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
     mf <- NULL
   }
 
+  if (!is.null(cluster_vec)) {
+    cluster_vec <- as.vector(cluster_vec)
+    stopifnot(length(cluster_vec) == nrow(X))
+    cluster_fac <- as.factor(cluster_vec)
+    cluster_sizes <- as.integer(table(cluster_fac))
+    n_clusters <- length(cluster_sizes)
+    n_blocks_requested <- n_blocks
+
+    if (n_clusters < n_blocks) {
+      warning("Number of clusters is less than n_blocks; reducing number of blocks to n_clusters.")
+      n_blocks <- n_clusters
+    }
+    if (max(cluster_sizes) > (nrow(X) / n_blocks_requested)) {
+      warning("Largest cluster is larger than n / n_blocks.")
+    }
+
+    # Assign whole clusters to jackknife blocks without splitting clusters.
+    cluster_levels <- levels(cluster_fac)
+    target <- nrow(X) / n_blocks
+    block_for_cluster <- integer(length(cluster_levels))
+    current_block <- 1L
+    current_size <- 0L
+    for (i in seq_along(cluster_levels)) {
+      remaining_clusters <- length(cluster_levels) - i + 1L
+      remaining_blocks <- n_blocks - current_block + 1L
+      if (remaining_clusters == remaining_blocks) {
+        block_for_cluster[i:length(cluster_levels)] <- current_block:n_blocks
+        break
+      }
+      sz <- cluster_sizes[i]
+      if (current_block < n_blocks && current_size > 0L && (current_size + sz) > target) {
+        current_block <- current_block + 1L
+        current_size <- 0L
+      }
+      block_for_cluster[i] <- current_block
+      current_size <- current_size + sz
+    }
+    names(block_for_cluster) <- cluster_levels
+    block_id <- block_for_cluster[as.character(cluster_fac)]
+  } else {
+    block_id <- NULL
+  }
+
   fit <- block_jackknife_fit(
     X = X,
     y = y,
     n_blocks = n_blocks,
     separators = separators,
     keep_delete = keep_delete,
-    weights = w
+    weights = w,
+    block_id = block_id
   )
 
   names(fit$coefficients) <- coef_names
@@ -150,6 +232,7 @@ bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
   fit$terms <- mt
   fit$model <- mf
   fit$weights <- w
+  fit$cluster <- cluster_vec
   fit$fitted.values <- drop(X %*% fit$coefficients)
   fit$residuals <- y - fit$fitted.values
   fit$df.residual <- nrow(X) - ncol(X)

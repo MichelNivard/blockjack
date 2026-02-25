@@ -6,10 +6,16 @@ Authors@R: person(given = "Michel", family = "Nivard", role = c("aut", "cre"), e
 Description: Fast block jackknife standard errors for linear regression.
     The implementation precomputes block-wise crossproducts and reuses them
     for leave-one-block-out estimates.
+URL: https://github.com/MichelNivard/blockjack, https://michelnivard.github.io/blockjack/
+BugReports: https://github.com/MichelNivard/blockjack/issues
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.3.2
 Suggests:
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    sandwich,
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
 Config/testthat/edition: 3
