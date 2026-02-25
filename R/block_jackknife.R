@@ -3,12 +3,19 @@
 # block_jackknife_fit() is the matrix interface.
 # bjlm() is a formula/data wrapper with an lm-like summary.
 
-block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_delete = TRUE) {
+block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_delete = TRUE,
+                                weights = NULL) {
   X <- as.matrix(X)
   y <- as.numeric(y)
   n <- nrow(X)
   p <- ncol(X)
   stopifnot(length(y) == n, p <= n)
+  if (is.null(weights)) {
+    weights <- rep(1, n)
+  } else {
+    weights <- as.numeric(weights)
+    stopifnot(length(weights) == n, all(is.finite(weights)), all(weights > 0))
+  }
 
   if (is.null(separators)) {
     separators <- floor(seq(0L, n, length.out = n_blocks + 1L))
@@ -29,9 +36,12 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
     idx <- i0:i1
     Xb <- X[idx, , drop = FALSE]
     yb <- y[idx]
+    wb <- sqrt(weights[idx])
+    Xbw <- Xb * wb
+    ybw <- yb * wb
 
-    xty <- drop(crossprod(Xb, yb))
-    xtx <- crossprod(Xb)
+    xty <- drop(crossprod(Xbw, ybw))
+    xtx <- crossprod(Xbw)
     XtY_blk[b, ] <- xty
     XtX_blk[b, , ] <- xtx
     XtY_tot <- XtY_tot + xty
@@ -65,6 +75,7 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
     cov = cov_jk,
     delete_values = delete_vals,
     separators = separators,
+    weights = weights,
     n = n,
     p = p,
     n_blocks = n_blocks
@@ -72,7 +83,7 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
 }
 
 bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
-                 na.action = na.omit, keep_delete = FALSE) {
+                 na.action = na.omit, keep_delete = FALSE, weights = NULL) {
   cl <- match.call()
 
   if (inherits(formula, "formula")) {
@@ -80,11 +91,38 @@ bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
     mt <- stats::terms(mf)
     y <- stats::model.response(mf)
     X <- stats::model.matrix(mt, mf)
+    if (is.null(weights)) {
+      w <- rep(1, nrow(X))
+    } else {
+      if (is.character(weights) && length(weights) == 1L && !is.null(data)) {
+        w_all <- as.numeric(data[[weights]])
+      } else {
+        w_all <- as.numeric(weights)
+      }
+      if (!is.null(data)) {
+        data_rows <- rownames(data)
+        if (is.null(data_rows)) {
+          data_rows <- as.character(seq_len(nrow(data)))
+        }
+        idx <- match(rownames(mf), data_rows)
+      } else {
+        idx <- as.integer(rownames(mf))
+      }
+      if (anyNA(idx)) {
+        stop("Could not align weights with model frame rows.")
+      }
+      w <- w_all[idx]
+    }
     coef_names <- colnames(X)
   } else {
     # Matrix interface through this wrapper: bjlm(X, y, ...)
     X <- as.matrix(formula)
     y <- as.numeric(data)
+    if (is.null(weights)) {
+      w <- rep(1, nrow(X))
+    } else {
+      w <- as.numeric(weights)
+    }
     if (is.null(colnames(X))) {
       coef_names <- paste0("V", seq_len(ncol(X)))
       colnames(X) <- coef_names
@@ -100,7 +138,8 @@ bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
     y = y,
     n_blocks = n_blocks,
     separators = separators,
-    keep_delete = keep_delete
+    keep_delete = keep_delete,
+    weights = w
   )
 
   names(fit$coefficients) <- coef_names
@@ -110,6 +149,7 @@ bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
   fit$call <- cl
   fit$terms <- mt
   fit$model <- mf
+  fit$weights <- w
   fit$fitted.values <- drop(X %*% fit$coefficients)
   fit$residuals <- y - fit$fitted.values
   fit$df.residual <- nrow(X) - ncol(X)
@@ -132,7 +172,7 @@ summary.bjlm <- function(object, ...) {
   out <- list(
     call = object$call,
     coefficients = tab,
-    sigma = sqrt(sum(object$residuals^2) / max(1, object$df.residual)),
+    sigma = sqrt(sum(object$weights * object$residuals^2) / max(1, object$df.residual)),
     df = c(object$rank, object$df.residual),
     n_blocks = object$n_blocks
   )

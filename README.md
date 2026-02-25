@@ -39,6 +39,8 @@ install.packages(".", repos = NULL, type = "source")
 
 ## Usage
 
+OLS example:
+
 ```r
 library(blockjack)
 
@@ -53,7 +55,23 @@ fit <- bjlm(y ~ x1 + x2, data = d, n_blocks = 200)
 summary(fit)
 ```
 
-Example output:
+WLS example:
+
+```r
+set.seed(2)
+n <- 20000
+x1 <- rnorm(n)
+x2 <- rnorm(n)
+v <- exp(0.7 * x1)
+w <- 1 / v
+y <- 0.5 + 0.7 * x1 - 0.2 * x2 + rnorm(n, sd = sqrt(v))
+d <- data.frame(y = y, x1 = x1, x2 = x2, w = w)
+
+fit_wls <- bjlm(y ~ x1 + x2, data = d, weights = w, n_blocks = 200)
+summary(fit_wls)
+```
+
+Example output (OLS):
 
 ```text
 Call:

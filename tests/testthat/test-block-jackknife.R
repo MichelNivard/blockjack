@@ -58,3 +58,27 @@ test_that("formula interface and summary work", {
   lm_fit <- lm(y ~ x1 + x2, data = d)
   expect_lt(max(abs(coef(fit) - coef(lm_fit))), 1e-8)
 })
+
+test_that("weighted bjlm matches WLS coefficients and has close SE", {
+  set.seed(404)
+  n <- 20000L
+  x1 <- rnorm(n)
+  x2 <- rnorm(n)
+  v <- exp(0.7 * x1)
+  w <- 1 / v
+  e <- rnorm(n, sd = sqrt(v))
+  y <- 0.4 + 0.8 * x1 - 0.3 * x2 + e
+  d <- data.frame(y = y, x1 = x1, x2 = x2, w = w)
+
+  fit_bj <- bjlm(y ~ x1 + x2, data = d, weights = w, n_blocks = 200L)
+  fit_wls <- lm(y ~ x1 + x2, data = d, weights = w)
+
+  expect_lt(max(abs(coef(fit_bj) - coef(fit_wls))), 1e-8)
+
+  se_wls <- coef(summary(fit_wls))[, 2]
+  abs_diff <- abs(fit_bj$se - se_wls)
+  rel_diff <- abs_diff / pmax(se_wls, 1e-12)
+
+  expect_lte(max(abs_diff), 0.002)
+  expect_lte(max(rel_diff), 0.20)
+})
