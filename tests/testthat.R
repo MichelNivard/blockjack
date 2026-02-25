@@ -1,4 +1,4 @@
 library(testthat)
-library(fastblockjk)
+library(blockjack)
 
-test_check("fastblockjk")
+test_check("blockjack")

@@ -1,4 +1,4 @@
-# fastblockjk
+# blockjack
 
 Fast block jackknife standard errors for linear regression.
 
@@ -12,7 +12,7 @@ install.packages(".", repos = NULL, type = "source")
 ## Usage
 
 ```r
-library(fastblockjk)
+library(blockjack)
 
 set.seed(1)
 n <- 20000

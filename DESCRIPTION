@@ -1,4 +1,4 @@
-Package: fastblockjk
+Package: blockjack
 Type: Package
 Title: Fast Block Jackknife for Linear Regression
 Version: 0.1.0
