@@ -2,6 +2,26 @@
 
 Fast block jackknife standard errors for linear regression.
 
+## What It Does
+
+`blockjack` computes linear-model coefficients and block jackknife standard
+errors efficiently by:
+
+1. Splitting rows into blocks.
+2. Precomputing block-wise `X'X` and `X'y`.
+3. Reusing those crossproducts for all leave-one-block-out fits.
+
+This avoids refitting the model from scratch for each block and is much faster
+than naive jackknife loops when `n_blocks` is large.
+
+## Method Source
+
+The computational trick follows the LD Score regression jackknife approach:
+
+Bulik-Sullivan, B., Loh, PR., Finucane, H. et al. LD Score regression
+distinguishes confounding from polygenicity in genome-wide association studies.
+Nat Genet 47, 291-295 (2015). https://doi.org/10.1038/ng.3211
+
 ## Install locally
 
 ```r
