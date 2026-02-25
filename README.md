@@ -5,7 +5,15 @@ Fast block jackknife standard errors for linear regression.
 ## Install locally
 
 ```r
-# from the package root
+# install from GitHub
+if (!requireNamespace("remotes", quietly = TRUE)) {
+  install.packages("remotes")
+}
+remotes::install_github("MichelNivard/blockjack")
+```
+
+```r
+# or install from a local checkout (from package root)
 install.packages(".", repos = NULL, type = "source")
 ```
 
