@@ -1,9 +1,20 @@
-# Validation Checks
+# Validation and Backend Checks
 
-This vignette gives short, runnable checks so users can validate that
-`blockjack` behaves as expected for OLS, WLS, and clustered data.
+This vignette shows how to validate `blockjack` in practice, including
+backend selection and numerical equivalence checks.
 
-## 1. OLS: coefficients match `lm`, SE are close
+## Backend Design
+
+`blockjack` now supports two computational backends in
+`block_jackknife_fit()` and `bjlm()`:
+
+- `backend = "Rcpp"` (default): compiled backend for speed.
+- `backend = "R"`: reference backend in pure R.
+
+If `backend = "Rcpp"` is requested but compiled symbols are unavailable,
+`blockjack` falls back to `backend = "R"` with a warning.
+
+## 1. OLS Accuracy Check (default backend)
 
 ``` r
 set.seed(101)
@@ -13,7 +24,7 @@ x2 <- rnorm(n)
 y <- 0.5 + 0.7 * x1 - 0.2 * x2 + rnorm(n)
 d <- data.frame(y = y, x1 = x1, x2 = x2)
 
-fit_bj <- bjlm(y ~ x1 + x2, data = d, n_blocks = 200)
+fit_bj <- bjlm(y ~ x1 + x2, data = d, n_blocks = 200)  # default backend=Rcpp
 fit_lm <- lm(y ~ x1 + x2, data = d)
 
 coef_diff <- max(abs(coef(fit_bj) - coef(fit_lm)))
@@ -21,17 +32,24 @@ se_ols <- coef(summary(fit_lm))[, 2]
 se_abs_diff <- max(abs(fit_bj$se - se_ols))
 se_rel_diff <- max(abs(fit_bj$se - se_ols) / pmax(se_ols, 1e-12))
 
-c(coef_max_diff = coef_diff,
+c(
+  backend = fit_bj$backend,
+  coef_max_diff = coef_diff,
   se_max_abs_diff = se_abs_diff,
-  se_max_rel_diff = se_rel_diff)
-#>   coef_max_diff se_max_abs_diff se_max_rel_diff 
-#>    4.440892e-16    5.927894e-04    8.434721e-02
+  se_max_rel_diff = se_rel_diff
+)
+#>                backend          coef_max_diff        se_max_abs_diff 
+#>                 "Rcpp" "5.55111512312578e-16" "0.000592789382082578" 
+#>        se_max_rel_diff 
+#>    "0.084347206108753"
 ```
 
-Expected: coefficient difference near machine precision; SE differences
-small.
+Expected:
 
-## 2. WLS: weighted coefficients match `lm(..., weights=)`
+- coefficients are effectively identical to `lm`.
+- JK SE are close (not exactly equal) to classical model SE.
+
+## 2. WLS Accuracy Check (default backend)
 
 ``` r
 set.seed(202)
@@ -46,15 +64,19 @@ d <- data.frame(y = y, x1 = x1, x2 = x2, w = w)
 fit_bj_w <- bjlm(y ~ x1 + x2, data = d, weights = w, n_blocks = 200)
 fit_wls <- lm(y ~ x1 + x2, data = d, weights = w)
 
-coef_table <- cbind(blockjack = coef(fit_bj_w),
-                    wls = coef(fit_wls),
-                    diff = coef(fit_bj_w) - coef(fit_wls))
+coef_table <- cbind(
+  blockjack = coef(fit_bj_w),
+  wls = coef(fit_wls),
+  diff = coef(fit_bj_w) - coef(fit_wls)
+)
 
 se_wls <- coef(summary(fit_wls))[, 2]
-se_table <- cbind(blockjack_jk_se = fit_bj_w$se,
-                  wls_se = se_wls,
-                  abs_diff = abs(fit_bj_w$se - se_wls),
-                  rel_diff = abs(fit_bj_w$se - se_wls) / pmax(se_wls, 1e-12))
+se_table <- cbind(
+  blockjack_jk_se = fit_bj_w$se,
+  wls_se = se_wls,
+  abs_diff = abs(fit_bj_w$se - se_wls),
+  rel_diff = abs(fit_bj_w$se - se_wls) / pmax(se_wls, 1e-12)
+)
 
 round(coef_table, 10)
 #>              blockjack        wls diff
@@ -68,13 +90,81 @@ round(se_table, 10)
 #> x2              0.005839611 0.006169317 0.0003297062 0.053442891
 ```
 
-Expected: coefficients match `lm` very closely; JK SE and WLS model SE
-are close, not identical.
+Expected:
 
-## 3. Cluster-aware JK: compare against `sandwich::vcovCL`
+- weighted coefficients match WLS coefficients very closely.
+- JK and model-based WLS SE are close.
 
-When `cluster=` is provided, `bjlm()` keeps clusters intact when forming
-jackknife blocks.
+## 3. OLS and WLS Monte Carlo Ratio Checks (200 runs each)
+
+The following checks mirror the cluster-style summary by computing
+quantiles of `JK SE / model SE` over repeated simulations.
+
+``` r
+ratio_quantiles <- function(ratio_mat) {
+  round(apply(ratio_mat, 2, quantile, probs = c(0.05, 0.50, 0.95)), 4)
+}
+
+set.seed(910)
+n <- 20000
+R <- 200
+
+# OLS
+ratio_ols <- matrix(NA_real_, R, 3)
+colnames(ratio_ols) <- c("(Intercept)", "x1", "x2")
+for (i in seq_len(R)) {
+  x1 <- rnorm(n); x2 <- rnorm(n)
+  d <- data.frame(y = 0.5 - 0.2 * x1 + 0.1 * x2 + rnorm(n), x1 = x1, x2 = x2)
+  fit_bj <- bjlm(y ~ x1 + x2, data = d, n_blocks = 200)
+  fit_lm <- lm(y ~ x1 + x2, data = d)
+  ratio_ols[i, ] <- fit_bj$se / coef(summary(fit_lm))[, 2]
+}
+
+# WLS
+ratio_wls <- matrix(NA_real_, R, 3)
+colnames(ratio_wls) <- c("(Intercept)", "x1", "x2")
+for (i in seq_len(R)) {
+  x1 <- rnorm(n); x2 <- rnorm(n)
+  v <- exp(0.7 * x1); w <- 1 / v
+  y <- 0.4 + 0.8 * x1 - 0.3 * x2 + rnorm(n, sd = sqrt(v))
+  d <- data.frame(y = y, x1 = x1, x2 = x2, w = w)
+  fit_bj <- bjlm(y ~ x1 + x2, data = d, weights = w, n_blocks = 200)
+  fit_wls <- lm(y ~ x1 + x2, data = d, weights = w)
+  ratio_wls[i, ] <- fit_bj$se / coef(summary(fit_wls))[, 2]
+}
+
+list(
+  ols_jk_over_lm = ratio_quantiles(ratio_ols),
+  wls_jk_over_wls = ratio_quantiles(ratio_wls)
+)
+#> $ols_jk_over_lm
+#>     (Intercept)     x1     x2
+#> 5%       0.9315 0.9227 0.9186
+#> 50%      1.0007 1.0033 1.0045
+#> 95%      1.0827 1.0787 1.0821
+#> 
+#> $wls_jk_over_wls
+#>     (Intercept)     x1     x2
+#> 5%       0.9069 0.9117 0.9188
+#> 50%      0.9948 1.0012 0.9963
+#> 95%      1.0753 1.0884 1.0734
+```
+
+Typical observed quantiles from this setup:
+
+- OLS `JK/OLS_SE`:
+  - `(Intercept)`: `0.9315, 1.0007, 1.0827`
+  - `x1`: `0.9227, 1.0033, 1.0787`
+  - `x2`: `0.9186, 1.0045, 1.0821`
+- WLS `JK/WLS_SE`:
+  - `(Intercept)`: `0.9069, 0.9948, 1.0753`
+  - `x1`: `0.9117, 1.0012, 1.0884`
+  - `x2`: `0.9188, 0.9963, 1.0734`
+
+## 4. Cluster-Aware Jackknife vs `vcovCL`
+
+When `cluster=` is supplied, clusters are not split across jackknife
+blocks.
 
 ``` r
 if (!requireNamespace("sandwich", quietly = TRUE)) {
@@ -114,5 +204,78 @@ round(apply(ratio, 2, quantile, probs = c(0.05, 0.50, 0.95)), 4)
 #> 95%      1.0811 1.0839 1.0874
 ```
 
-Expected: ratios near 1 (with sampling variability), showing
-cluster-aware JK SE tracks `vcovCL` in this setting.
+Expected: JK/`vcovCL` ratios near 1 with simulation variability.
+
+## 5. Strict Backend Equivalence (Rcpp vs R)
+
+``` r
+set.seed(404)
+n <- 12000
+X <- cbind(1, matrix(rnorm(n * 2), n, 2))
+y <- drop(X %*% c(0.5, -0.2, 0.1) + rnorm(n))
+
+fit_r <- block_jackknife_fit(X, y, n_blocks = 100, backend = "R")
+fit_cpp <- block_jackknife_fit(X, y, n_blocks = 100, backend = "Rcpp")
+
+c(
+  max_coef_diff = max(abs(fit_r$coefficients - fit_cpp$coefficients)),
+  max_se_diff = max(abs(fit_r$se - fit_cpp$se)),
+  max_cov_diff = max(abs(fit_r$cov - fit_cpp$cov))
+)
+#> max_coef_diff   max_se_diff  max_cov_diff 
+#>  2.775558e-17  4.857226e-17  8.944668e-19
+```
+
+Expected: very small differences (near floating-point tolerance).
+
+## 6. Backend Timing Benchmark
+
+The chunk below provides a small local benchmark comparing
+`backend = "Rcpp"` against `backend = "R"` for OLS, WLS, and
+cluster/block-id scenarios.
+
+``` r
+bench_median <- function(fun, reps = 4, iterations = 12) {
+  t <- numeric(reps)
+  for (i in seq_len(reps)) {
+    gc(FALSE)
+    tt <- system.time({
+      for (j in seq_len(iterations)) fun()
+    })
+    t[i] <- unname(tt[["elapsed"]]) / iterations
+  }
+  median(t)
+}
+
+set.seed(505)
+n <- 12000
+x1 <- rnorm(n); x2 <- rnorm(n)
+X <- cbind(1, x1, x2)
+y <- drop(X %*% c(0.5, -0.2, 0.1) + rnorm(n))
+v <- exp(0.5 * x1); w <- 1 / v
+cl <- rep(seq_len(n / 10), each = 10)
+block_id <- ((cl - 1L) %% 100L) + 1L
+
+med_r_ols <- bench_median(function() block_jackknife_fit(X, y, n_blocks = 100, backend = "R"))
+med_c_ols <- bench_median(function() block_jackknife_fit(X, y, n_blocks = 100, backend = "Rcpp"))
+
+med_r_wls <- bench_median(function() block_jackknife_fit(X, y, n_blocks = 100, weights = w, backend = "R"))
+med_c_wls <- bench_median(function() block_jackknife_fit(X, y, n_blocks = 100, weights = w, backend = "Rcpp"))
+
+med_r_cl <- bench_median(function() block_jackknife_fit(X, y, block_id = block_id, backend = "R"))
+med_c_cl <- bench_median(function() block_jackknife_fit(X, y, block_id = block_id, backend = "Rcpp"))
+
+data.frame(
+  scenario = c("OLS", "WLS", "Cluster"),
+  median_R = c(med_r_ols, med_r_wls, med_r_cl),
+  median_Rcpp = c(med_c_ols, med_c_wls, med_c_cl),
+  speedup_Rcpp_vs_R = c(med_r_ols / med_c_ols, med_r_wls / med_c_wls, med_r_cl / med_c_cl)
+)
+#>   scenario    median_R  median_Rcpp speedup_Rcpp_vs_R
+#> 1      OLS 0.002708333 0.0005000000          5.416667
+#> 2      WLS 0.002708333 0.0004166667          6.500000
+#> 3  Cluster 0.003000000 0.0006666667          4.500000
+```
+
+Interpretation: speedups are machine- and workload-dependent, but
+`backend = "Rcpp"` should typically be faster than the pure R backend.

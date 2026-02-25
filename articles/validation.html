@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>Validation Checks • blockjack</title>
+<title>Validation and Backend Checks • blockjack</title>
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="../deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Validation Checks">
+<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Validation and Backend Checks">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -32,7 +32,7 @@
 <li class="active nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="../articles/validation.html">Validation Checks</a></li>
+<li><a class="dropdown-item" href="../articles/validation.html">Validation and Backend Checks</a></li>
   </ul>
 </li>
       </ul>
@@ -51,7 +51,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
 
-      <h1>Validation Checks</h1>
+      <h1>Validation and Backend Checks</h1>
             
       
       <small class="dont-index">Source: <a href="https://github.com/MichelNivard/blockjack/blob/master/vignettes/validation.Rmd" class="external-link"><code>vignettes/validation.Rmd</code></a></small>
@@ -60,11 +60,27 @@
 
     
     
-<p>This vignette gives short, runnable checks so users can validate that
-<code>blockjack</code> behaves as expected for OLS, WLS, and clustered
-data.</p>
+<p>This vignette shows how to validate <code>blockjack</code> in
+practice, including backend selection and numerical equivalence
+checks.</p>
 <div class="section level2">
-<h2 id="ols-coefficients-match-lm-se-are-close">1. OLS: coefficients match <code>lm</code>, SE are close<a class="anchor" aria-label="anchor" href="#ols-coefficients-match-lm-se-are-close"></a>
+<h2 id="backend-design">Backend Design<a class="anchor" aria-label="anchor" href="#backend-design"></a>
+</h2>
+<p><code>blockjack</code> now supports two computational backends in
+<code>block_jackknife_fit()</code> and <code>bjlm()</code>:</p>
+<ul>
+<li>
+<code>backend = "Rcpp"</code> (default): compiled backend for
+speed.</li>
+<li>
+<code>backend = "R"</code>: reference backend in pure R.</li>
+</ul>
+<p>If <code>backend = "Rcpp"</code> is requested but compiled symbols
+are unavailable, <code>blockjack</code> falls back to
+<code>backend = "R"</code> with a warning.</p>
+</div>
+<div class="section level2">
+<h2 id="ols-accuracy-check-default-backend">1. OLS Accuracy Check (default backend)<a class="anchor" aria-label="anchor" href="#ols-accuracy-check-default-backend"></a>
 </h2>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">101</span><span class="op">)</span></span>
@@ -74,7 +90,7 @@ data.</p>
 <span><span class="va">y</span> <span class="op">&lt;-</span> <span class="fl">0.5</span> <span class="op">+</span> <span class="fl">0.7</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">-</span> <span class="fl">0.2</span> <span class="op">*</span> <span class="va">x2</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
 <span><span class="va">d</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, x1 <span class="op">=</span> <span class="va">x1</span>, x2 <span class="op">=</span> <span class="va">x2</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">fit_bj</span> <span class="op">&lt;-</span> <span class="fu">bjlm</span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">d</span>, n_blocks <span class="op">=</span> <span class="fl">200</span><span class="op">)</span></span>
+<span><span class="va">fit_bj</span> <span class="op">&lt;-</span> <span class="fu">bjlm</span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">d</span>, n_blocks <span class="op">=</span> <span class="fl">200</span><span class="op">)</span>  <span class="co"># default backend=Rcpp</span></span>
 <span><span class="va">fit_lm</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">d</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">coef_diff</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_bj</span><span class="op">)</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_lm</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
@@ -82,17 +98,24 @@ data.</p>
 <span><span class="va">se_abs_diff</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">fit_bj</span><span class="op">$</span><span class="va">se</span> <span class="op">-</span> <span class="va">se_ols</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">se_rel_diff</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">fit_bj</span><span class="op">$</span><span class="va">se</span> <span class="op">-</span> <span class="va">se_ols</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="va">se_ols</span>, <span class="fl">1e-12</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>coef_max_diff <span class="op">=</span> <span class="va">coef_diff</span>,</span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>  backend <span class="op">=</span> <span class="va">fit_bj</span><span class="op">$</span><span class="va">backend</span>,</span>
+<span>  coef_max_diff <span class="op">=</span> <span class="va">coef_diff</span>,</span>
 <span>  se_max_abs_diff <span class="op">=</span> <span class="va">se_abs_diff</span>,</span>
-<span>  se_max_rel_diff <span class="op">=</span> <span class="va">se_rel_diff</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   coef_max_diff se_max_abs_diff se_max_rel_diff </span></span>
-<span><span class="co">#&gt;    4.440892e-16    5.927894e-04    8.434721e-02</span></span></code></pre></div>
-<p>Expected: coefficient difference near machine precision; SE
-differences small.</p>
+<span>  se_max_rel_diff <span class="op">=</span> <span class="va">se_rel_diff</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt;                backend          coef_max_diff        se_max_abs_diff </span></span>
+<span><span class="co">#&gt;                 "Rcpp" "5.55111512312578e-16" "0.000592789382082578" </span></span>
+<span><span class="co">#&gt;        se_max_rel_diff </span></span>
+<span><span class="co">#&gt;    "0.084347206108753"</span></span></code></pre></div>
+<p>Expected:</p>
+<ul>
+<li>coefficients are effectively identical to <code>lm</code>.</li>
+<li>JK SE are close (not exactly equal) to classical model SE.</li>
+</ul>
 </div>
 <div class="section level2">
-<h2 id="wls-weighted-coefficients-match-lm----weights">2. WLS: weighted coefficients match
-<code>lm(..., weights=)</code><a class="anchor" aria-label="anchor" href="#wls-weighted-coefficients-match-lm----weights"></a>
+<h2 id="wls-accuracy-check-default-backend">2. WLS Accuracy Check (default backend)<a class="anchor" aria-label="anchor" href="#wls-accuracy-check-default-backend"></a>
 </h2>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">202</span><span class="op">)</span></span>
@@ -107,15 +130,19 @@ differences small.</p>
 <span><span class="va">fit_bj_w</span> <span class="op">&lt;-</span> <span class="fu">bjlm</span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">d</span>, weights <span class="op">=</span> <span class="va">w</span>, n_blocks <span class="op">=</span> <span class="fl">200</span><span class="op">)</span></span>
 <span><span class="va">fit_wls</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">d</span>, weights <span class="op">=</span> <span class="va">w</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">coef_table</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span>blockjack <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_bj_w</span><span class="op">)</span>,</span>
-<span>                    wls <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_wls</span><span class="op">)</span>,</span>
-<span>                    diff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_bj_w</span><span class="op">)</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_wls</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">coef_table</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span></span>
+<span>  blockjack <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_bj_w</span><span class="op">)</span>,</span>
+<span>  wls <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_wls</span><span class="op">)</span>,</span>
+<span>  diff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_bj_w</span><span class="op">)</span> <span class="op">-</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="va">fit_wls</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">se_wls</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">fit_wls</span><span class="op">)</span><span class="op">)</span><span class="op">[</span>, <span class="fl">2</span><span class="op">]</span></span>
-<span><span class="va">se_table</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span>blockjack_jk_se <span class="op">=</span> <span class="va">fit_bj_w</span><span class="op">$</span><span class="va">se</span>,</span>
-<span>                  wls_se <span class="op">=</span> <span class="va">se_wls</span>,</span>
-<span>                  abs_diff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">fit_bj_w</span><span class="op">$</span><span class="va">se</span> <span class="op">-</span> <span class="va">se_wls</span><span class="op">)</span>,</span>
-<span>                  rel_diff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">fit_bj_w</span><span class="op">$</span><span class="va">se</span> <span class="op">-</span> <span class="va">se_wls</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="va">se_wls</span>, <span class="fl">1e-12</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">se_table</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span></span>
+<span>  blockjack_jk_se <span class="op">=</span> <span class="va">fit_bj_w</span><span class="op">$</span><span class="va">se</span>,</span>
+<span>  wls_se <span class="op">=</span> <span class="va">se_wls</span>,</span>
+<span>  abs_diff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">fit_bj_w</span><span class="op">$</span><span class="va">se</span> <span class="op">-</span> <span class="va">se_wls</span><span class="op">)</span>,</span>
+<span>  rel_diff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">fit_bj_w</span><span class="op">$</span><span class="va">se</span> <span class="op">-</span> <span class="va">se_wls</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">pmax</a></span><span class="op">(</span><span class="va">se_wls</span>, <span class="fl">1e-12</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">coef_table</span>, <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="co">#&gt;              blockjack        wls diff</span></span>
@@ -127,16 +154,102 @@ differences small.</p>
 <span><span class="co">#&gt; (Intercept)     0.007628293 0.007616547 0.0000117460 0.001542166</span></span>
 <span><span class="co">#&gt; x1              0.006215225 0.006197613 0.0000176120 0.002841740</span></span>
 <span><span class="co">#&gt; x2              0.005839611 0.006169317 0.0003297062 0.053442891</span></span></code></pre></div>
-<p>Expected: coefficients match <code>lm</code> very closely; JK SE and
-WLS model SE are close, not identical.</p>
+<p>Expected:</p>
+<ul>
+<li>weighted coefficients match WLS coefficients very closely.</li>
+<li>JK and model-based WLS SE are close.</li>
+</ul>
 </div>
 <div class="section level2">
-<h2 id="cluster-aware-jk-compare-against-sandwichvcovcl">3. Cluster-aware JK: compare against
-<code>sandwich::vcovCL</code><a class="anchor" aria-label="anchor" href="#cluster-aware-jk-compare-against-sandwichvcovcl"></a>
+<h2 id="ols-and-wls-monte-carlo-ratio-checks-200-runs-each">3. OLS and WLS Monte Carlo Ratio Checks (200 runs each)<a class="anchor" aria-label="anchor" href="#ols-and-wls-monte-carlo-ratio-checks-200-runs-each"></a>
 </h2>
-<p>When <code>cluster=</code> is provided, <code>bjlm()</code> keeps
-clusters intact when forming jackknife blocks.</p>
+<p>The following checks mirror the cluster-style summary by computing
+quantiles of <code>JK SE / model SE</code> over repeated
+simulations.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">ratio_quantiles</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">ratio_mat</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/apply.html" class="external-link">apply</a></span><span class="op">(</span><span class="va">ratio_mat</span>, <span class="fl">2</span>, <span class="va">quantile</span>, probs <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.05</span>, <span class="fl">0.50</span>, <span class="fl">0.95</span><span class="op">)</span><span class="op">)</span>, <span class="fl">4</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">910</span><span class="op">)</span></span>
+<span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">20000</span></span>
+<span><span class="va">R</span> <span class="op">&lt;-</span> <span class="fl">200</span></span>
+<span></span>
+<span><span class="co"># OLS</span></span>
+<span><span class="va">ratio_ols</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="cn">NA_real_</span>, <span class="va">R</span>, <span class="fl">3</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/colnames.html" class="external-link">colnames</a></span><span class="op">(</span><span class="va">ratio_ols</span><span class="op">)</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"(Intercept)"</span>, <span class="st">"x1"</span>, <span class="st">"x2"</span><span class="op">)</span></span>
+<span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">R</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">x1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>; <span class="va">x2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
+<span>  <span class="va">d</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>y <span class="op">=</span> <span class="fl">0.5</span> <span class="op">-</span> <span class="fl">0.2</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">+</span> <span class="fl">0.1</span> <span class="op">*</span> <span class="va">x2</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>, x1 <span class="op">=</span> <span class="va">x1</span>, x2 <span class="op">=</span> <span class="va">x2</span><span class="op">)</span></span>
+<span>  <span class="va">fit_bj</span> <span class="op">&lt;-</span> <span class="fu">bjlm</span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">d</span>, n_blocks <span class="op">=</span> <span class="fl">200</span><span class="op">)</span></span>
+<span>  <span class="va">fit_lm</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">d</span><span class="op">)</span></span>
+<span>  <span class="va">ratio_ols</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="va">fit_bj</span><span class="op">$</span><span class="va">se</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">fit_lm</span><span class="op">)</span><span class="op">)</span><span class="op">[</span>, <span class="fl">2</span><span class="op">]</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="co"># WLS</span></span>
+<span><span class="va">ratio_wls</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="cn">NA_real_</span>, <span class="va">R</span>, <span class="fl">3</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/colnames.html" class="external-link">colnames</a></span><span class="op">(</span><span class="va">ratio_wls</span><span class="op">)</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"(Intercept)"</span>, <span class="st">"x1"</span>, <span class="st">"x2"</span><span class="op">)</span></span>
+<span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">R</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">x1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>; <span class="va">x2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
+<span>  <span class="va">v</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="fl">0.7</span> <span class="op">*</span> <span class="va">x1</span><span class="op">)</span>; <span class="va">w</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="op">/</span> <span class="va">v</span></span>
+<span>  <span class="va">y</span> <span class="op">&lt;-</span> <span class="fl">0.4</span> <span class="op">+</span> <span class="fl">0.8</span> <span class="op">*</span> <span class="va">x1</span> <span class="op">-</span> <span class="fl">0.3</span> <span class="op">*</span> <span class="va">x2</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span>, sd <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">v</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="va">d</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>y <span class="op">=</span> <span class="va">y</span>, x1 <span class="op">=</span> <span class="va">x1</span>, x2 <span class="op">=</span> <span class="va">x2</span>, w <span class="op">=</span> <span class="va">w</span><span class="op">)</span></span>
+<span>  <span class="va">fit_bj</span> <span class="op">&lt;-</span> <span class="fu">bjlm</span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">d</span>, weights <span class="op">=</span> <span class="va">w</span>, n_blocks <span class="op">=</span> <span class="fl">200</span><span class="op">)</span></span>
+<span>  <span class="va">fit_wls</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="va">x1</span> <span class="op">+</span> <span class="va">x2</span>, data <span class="op">=</span> <span class="va">d</span>, weights <span class="op">=</span> <span class="va">w</span><span class="op">)</span></span>
+<span>  <span class="va">ratio_wls</span><span class="op">[</span><span class="va">i</span>, <span class="op">]</span> <span class="op">&lt;-</span> <span class="va">fit_bj</span><span class="op">$</span><span class="va">se</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">fit_wls</span><span class="op">)</span><span class="op">)</span><span class="op">[</span>, <span class="fl">2</span><span class="op">]</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>  ols_jk_over_lm <span class="op">=</span> <span class="fu">ratio_quantiles</span><span class="op">(</span><span class="va">ratio_ols</span><span class="op">)</span>,</span>
+<span>  wls_jk_over_wls <span class="op">=</span> <span class="fu">ratio_quantiles</span><span class="op">(</span><span class="va">ratio_wls</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt; $ols_jk_over_lm</span></span>
+<span><span class="co">#&gt;     (Intercept)     x1     x2</span></span>
+<span><span class="co">#&gt; 5%       0.9315 0.9227 0.9186</span></span>
+<span><span class="co">#&gt; 50%      1.0007 1.0033 1.0045</span></span>
+<span><span class="co">#&gt; 95%      1.0827 1.0787 1.0821</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; $wls_jk_over_wls</span></span>
+<span><span class="co">#&gt;     (Intercept)     x1     x2</span></span>
+<span><span class="co">#&gt; 5%       0.9069 0.9117 0.9188</span></span>
+<span><span class="co">#&gt; 50%      0.9948 1.0012 0.9963</span></span>
+<span><span class="co">#&gt; 95%      1.0753 1.0884 1.0734</span></span></code></pre></div>
+<p>Typical observed quantiles from this setup:</p>
+<ul>
+<li>OLS <code>JK/OLS_SE</code>:
+<ul>
+<li>
+<code>(Intercept)</code>: <code>0.9315, 1.0007, 1.0827</code>
+</li>
+<li>
+<code>x1</code>: <code>0.9227, 1.0033, 1.0787</code>
+</li>
+<li>
+<code>x2</code>: <code>0.9186, 1.0045, 1.0821</code>
+</li>
+</ul>
+</li>
+<li>WLS <code>JK/WLS_SE</code>:
+<ul>
+<li>
+<code>(Intercept)</code>: <code>0.9069, 0.9948, 1.0753</code>
+</li>
+<li>
+<code>x1</code>: <code>0.9117, 1.0012, 1.0884</code>
+</li>
+<li>
+<code>x2</code>: <code>0.9188, 0.9963, 1.0734</code>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section level2">
+<h2 id="cluster-aware-jackknife-vs-vcovcl">4. Cluster-Aware Jackknife vs <code>vcovCL</code><a class="anchor" aria-label="anchor" href="#cluster-aware-jackknife-vs-vcovcl"></a>
+</h2>
+<p>When <code>cluster=</code> is supplied, clusters are not split across
+jackknife blocks.</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/ns-load.html" class="external-link">requireNamespace</a></span><span class="op">(</span><span class="st">"sandwich"</span>, quietly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="kw"><a href="https://rdrr.io/r/base/stop.html" class="external-link">stop</a></span><span class="op">(</span><span class="st">"Please install 'sandwich' to run cluster validation."</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
@@ -172,8 +285,80 @@ clusters intact when forming jackknife blocks.</p>
 <span><span class="co">#&gt; 5%       0.9142 0.9330 0.9200</span></span>
 <span><span class="co">#&gt; 50%      1.0071 1.0103 1.0021</span></span>
 <span><span class="co">#&gt; 95%      1.0811 1.0839 1.0874</span></span></code></pre></div>
-<p>Expected: ratios near 1 (with sampling variability), showing
-cluster-aware JK SE tracks <code>vcovCL</code> in this setting.</p>
+<p>Expected: JK/<code>vcovCL</code> ratios near 1 with simulation
+variability.</p>
+</div>
+<div class="section level2">
+<h2 id="strict-backend-equivalence-rcpp-vs-r">5. Strict Backend Equivalence (Rcpp vs R)<a class="anchor" aria-label="anchor" href="#strict-backend-equivalence-rcpp-vs-r"></a>
+</h2>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">404</span><span class="op">)</span></span>
+<span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">12000</span></span>
+<span><span class="va">X</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span> <span class="op">*</span> <span class="fl">2</span><span class="op">)</span>, <span class="va">n</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">y</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/drop.html" class="external-link">drop</a></span><span class="op">(</span><span class="va">X</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.5</span>, <span class="op">-</span><span class="fl">0.2</span>, <span class="fl">0.1</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">fit_r</span> <span class="op">&lt;-</span> <span class="fu">block_jackknife_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">y</span>, n_blocks <span class="op">=</span> <span class="fl">100</span>, backend <span class="op">=</span> <span class="st">"R"</span><span class="op">)</span></span>
+<span><span class="va">fit_cpp</span> <span class="op">&lt;-</span> <span class="fu">block_jackknife_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">y</span>, n_blocks <span class="op">=</span> <span class="fl">100</span>, backend <span class="op">=</span> <span class="st">"Rcpp"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>  max_coef_diff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">fit_r</span><span class="op">$</span><span class="va">coefficients</span> <span class="op">-</span> <span class="va">fit_cpp</span><span class="op">$</span><span class="va">coefficients</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  max_se_diff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">fit_r</span><span class="op">$</span><span class="va">se</span> <span class="op">-</span> <span class="va">fit_cpp</span><span class="op">$</span><span class="va">se</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  max_cov_diff <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Extremes.html" class="external-link">max</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">abs</a></span><span class="op">(</span><span class="va">fit_r</span><span class="op">$</span><span class="va">cov</span> <span class="op">-</span> <span class="va">fit_cpp</span><span class="op">$</span><span class="va">cov</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt; max_coef_diff   max_se_diff  max_cov_diff </span></span>
+<span><span class="co">#&gt;  2.775558e-17  4.857226e-17  8.944668e-19</span></span></code></pre></div>
+<p>Expected: very small differences (near floating-point tolerance).</p>
+</div>
+<div class="section level2">
+<h2 id="backend-timing-benchmark">6. Backend Timing Benchmark<a class="anchor" aria-label="anchor" href="#backend-timing-benchmark"></a>
+</h2>
+<p>The chunk below provides a small local benchmark comparing
+<code>backend = "Rcpp"</code> against <code>backend = "R"</code> for
+OLS, WLS, and cluster/block-id scenarios.</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">bench_median</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">fun</span>, <span class="va">reps</span> <span class="op">=</span> <span class="fl">4</span>, <span class="va">iterations</span> <span class="op">=</span> <span class="fl">12</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">t</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">numeric</a></span><span class="op">(</span><span class="va">reps</span><span class="op">)</span></span>
+<span>  <span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">reps</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/gc.html" class="external-link">gc</a></span><span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span></span>
+<span>    <span class="va">tt</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.time.html" class="external-link">system.time</a></span><span class="op">(</span><span class="op">{</span></span>
+<span>      <span class="kw">for</span> <span class="op">(</span><span class="va">j</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">iterations</span><span class="op">)</span><span class="op">)</span> <span class="fu">fun</span><span class="op">(</span><span class="op">)</span></span>
+<span>    <span class="op">}</span><span class="op">)</span></span>
+<span>    <span class="va">t</span><span class="op">[</span><span class="va">i</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/unname.html" class="external-link">unname</a></span><span class="op">(</span><span class="va">tt</span><span class="op">[[</span><span class="st">"elapsed"</span><span class="op">]</span><span class="op">]</span><span class="op">)</span> <span class="op">/</span> <span class="va">iterations</span></span>
+<span>  <span class="op">}</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">t</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">505</span><span class="op">)</span></span>
+<span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">12000</span></span>
+<span><span class="va">x1</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span>; <span class="va">x2</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span></span>
+<span><span class="va">X</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span><span class="fl">1</span>, <span class="va">x1</span>, <span class="va">x2</span><span class="op">)</span></span>
+<span><span class="va">y</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/drop.html" class="external-link">drop</a></span><span class="op">(</span><span class="va">X</span> <span class="op"><a href="https://rdrr.io/r/base/matmult.html" class="external-link">%*%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.5</span>, <span class="op">-</span><span class="fl">0.2</span>, <span class="fl">0.1</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">v</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="fl">0.5</span> <span class="op">*</span> <span class="va">x1</span><span class="op">)</span>; <span class="va">w</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="op">/</span> <span class="va">v</span></span>
+<span><span class="va">cl</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="va">n</span> <span class="op">/</span> <span class="fl">10</span><span class="op">)</span>, each <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
+<span><span class="va">block_id</span> <span class="op">&lt;-</span> <span class="op">(</span><span class="op">(</span><span class="va">cl</span> <span class="op">-</span> <span class="fl">1L</span><span class="op">)</span> <span class="op"><a href="https://rdrr.io/r/base/Arithmetic.html" class="external-link">%%</a></span> <span class="fl">100L</span><span class="op">)</span> <span class="op">+</span> <span class="fl">1L</span></span>
+<span></span>
+<span><span class="va">med_r_ols</span> <span class="op">&lt;-</span> <span class="fu">bench_median</span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="fu">block_jackknife_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">y</span>, n_blocks <span class="op">=</span> <span class="fl">100</span>, backend <span class="op">=</span> <span class="st">"R"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">med_c_ols</span> <span class="op">&lt;-</span> <span class="fu">bench_median</span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="fu">block_jackknife_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">y</span>, n_blocks <span class="op">=</span> <span class="fl">100</span>, backend <span class="op">=</span> <span class="st">"Rcpp"</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">med_r_wls</span> <span class="op">&lt;-</span> <span class="fu">bench_median</span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="fu">block_jackknife_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">y</span>, n_blocks <span class="op">=</span> <span class="fl">100</span>, weights <span class="op">=</span> <span class="va">w</span>, backend <span class="op">=</span> <span class="st">"R"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">med_c_wls</span> <span class="op">&lt;-</span> <span class="fu">bench_median</span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="fu">block_jackknife_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">y</span>, n_blocks <span class="op">=</span> <span class="fl">100</span>, weights <span class="op">=</span> <span class="va">w</span>, backend <span class="op">=</span> <span class="st">"Rcpp"</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">med_r_cl</span> <span class="op">&lt;-</span> <span class="fu">bench_median</span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="fu">block_jackknife_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">y</span>, block_id <span class="op">=</span> <span class="va">block_id</span>, backend <span class="op">=</span> <span class="st">"R"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">med_c_cl</span> <span class="op">&lt;-</span> <span class="fu">bench_median</span><span class="op">(</span><span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="fu">block_jackknife_fit</span><span class="op">(</span><span class="va">X</span>, <span class="va">y</span>, block_id <span class="op">=</span> <span class="va">block_id</span>, backend <span class="op">=</span> <span class="st">"Rcpp"</span><span class="op">)</span><span class="op">)</span></span>
+<span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  scenario <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"OLS"</span>, <span class="st">"WLS"</span>, <span class="st">"Cluster"</span><span class="op">)</span>,</span>
+<span>  median_R <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">med_r_ols</span>, <span class="va">med_r_wls</span>, <span class="va">med_r_cl</span><span class="op">)</span>,</span>
+<span>  median_Rcpp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">med_c_ols</span>, <span class="va">med_c_wls</span>, <span class="va">med_c_cl</span><span class="op">)</span>,</span>
+<span>  speedup_Rcpp_vs_R <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="va">med_r_ols</span> <span class="op">/</span> <span class="va">med_c_ols</span>, <span class="va">med_r_wls</span> <span class="op">/</span> <span class="va">med_c_wls</span>, <span class="va">med_r_cl</span> <span class="op">/</span> <span class="va">med_c_cl</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span><span class="co">#&gt;   scenario    median_R  median_Rcpp speedup_Rcpp_vs_R</span></span>
+<span><span class="co">#&gt; 1      OLS 0.002708333 0.0005000000          5.416667</span></span>
+<span><span class="co">#&gt; 2      WLS 0.002708333 0.0004166667          6.500000</span></span>
+<span><span class="co">#&gt; 3  Cluster 0.003000000 0.0006666667          4.500000</span></span></code></pre></div>
+<p>Interpretation: speedups are machine- and workload-dependent, but
+<code>backend = "Rcpp"</code> should typically be faster than the pure R
+backend.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
