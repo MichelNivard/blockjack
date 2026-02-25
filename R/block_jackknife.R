@@ -3,13 +3,13 @@
 # block_jackknife_fit() is the matrix interface.
 # bjlm() is a formula/data wrapper with an lm-like summary.
 
-block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_delete = TRUE,
-                                weights = NULL, block_id = NULL) {
+.block_jackknife_prepare <- function(X, y, n_blocks, separators, weights, block_id) {
   X <- as.matrix(X)
   y <- as.numeric(y)
   n <- nrow(X)
   p <- ncol(X)
   stopifnot(length(y) == n, p <= n)
+
   if (is.null(weights)) {
     weights <- rep(1, n)
   } else {
@@ -24,9 +24,9 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
     }
     n_blocks <- length(separators) - 1L
     stopifnot(n_blocks >= 2L, separators[1] == 0L, separators[length(separators)] == n)
-    block_index <- vector("list", n_blocks)
+    block_id <- integer(n)
     for (b in seq_len(n_blocks)) {
-      block_index[[b]] <- (separators[b] + 1L):separators[b + 1L]
+      block_id[(separators[b] + 1L):separators[b + 1L]] <- b
     }
   } else {
     block_id <- as.integer(as.factor(block_id))
@@ -34,9 +34,18 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
     n_blocks <- length(unique(block_id))
     stopifnot(n_blocks >= 2L)
     separators <- NULL
-    block_index <- split(seq_len(n), block_id)
   }
 
+  list(
+    X = X, y = y, weights = weights, block_id = block_id,
+    separators = separators, n = n, p = p, n_blocks = n_blocks
+  )
+}
+
+.block_jackknife_fit_R <- function(X, y, weights, block_id, keep_delete) {
+  n_blocks <- length(unique(block_id))
+  p <- ncol(X)
+  block_index <- split(seq_len(nrow(X)), block_id)
   XtY_blk <- matrix(0, n_blocks, p)
   XtX_blk <- array(0, dim = c(n_blocks, p, p))
   XtY_tot <- numeric(p)
@@ -84,18 +93,44 @@ block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_d
     se = se_jk,
     cov = cov_jk,
     delete_values = delete_vals,
-    separators = separators,
-    block_id = block_id,
-    weights = weights,
-    n = n,
-    p = p,
     n_blocks = n_blocks
   )
 }
 
+block_jackknife_fit <- function(X, y, n_blocks = 200L, separators = NULL, keep_delete = TRUE,
+                                weights = NULL, block_id = NULL, backend = c("Rcpp", "R")) {
+  backend <- match.arg(backend)
+  prep <- .block_jackknife_prepare(
+    X = X, y = y, n_blocks = n_blocks, separators = separators, weights = weights, block_id = block_id
+  )
+
+  use_rcpp <- identical(backend, "Rcpp")
+  if (use_rcpp && !exists("bj_core_cpp", mode = "function")) {
+    warning("Rcpp backend requested but compiled backend is unavailable; falling back to backend='R'.")
+    use_rcpp <- FALSE
+  }
+
+  fit_core <- if (use_rcpp) {
+    bj_core_cpp(prep$X, prep$y, prep$weights, prep$block_id, keep_delete)
+  } else {
+    .block_jackknife_fit_R(prep$X, prep$y, prep$weights, prep$block_id, keep_delete)
+  }
+
+  fit_core$separators <- prep$separators
+  fit_core$block_id <- prep$block_id
+  fit_core$weights <- prep$weights
+  fit_core$n <- prep$n
+  fit_core$p <- prep$p
+  fit_core$n_blocks <- prep$n_blocks
+  fit_core$backend <- if (use_rcpp) "Rcpp" else "R"
+  fit_core
+}
+
 bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
-                 na.action = na.omit, keep_delete = FALSE, weights = NULL, cluster = NULL) {
+                 na.action = na.omit, keep_delete = FALSE, weights = NULL, cluster = NULL,
+                 backend = c("Rcpp", "R")) {
   cl <- match.call()
+  backend <- match.arg(backend)
 
   if (inherits(formula, "formula")) {
     mf <- stats::model.frame(formula = formula, data = data, na.action = na.action)
@@ -221,7 +256,8 @@ bjlm <- function(formula, data = NULL, n_blocks = 200L, separators = NULL,
     separators = separators,
     keep_delete = keep_delete,
     weights = w,
-    block_id = block_id
+    block_id = block_id,
+    backend = backend
   )
 
   names(fit$coefficients) <- coef_names
@@ -257,7 +293,8 @@ summary.bjlm <- function(object, ...) {
     coefficients = tab,
     sigma = sqrt(sum(object$weights * object$residuals^2) / max(1, object$df.residual)),
     df = c(object$rank, object$df.residual),
-    n_blocks = object$n_blocks
+    n_blocks = object$n_blocks,
+    backend = object$backend
   )
   class(out) <- "summary.bjlm"
   out
@@ -284,6 +321,7 @@ print.summary.bjlm <- function(x, digits = max(3L, getOption("digits") - 3L), ..
     )
   )
   cat(sprintf("Jackknife blocks: %d\n", x$n_blocks))
+  cat(sprintf("Backend: %s\n", x$backend))
   invisible(x)
 }
 
