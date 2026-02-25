@@ -44,19 +44,29 @@ library(blockjack)
 
 set.seed(1)
 n <- 20000
-X <- cbind(1, matrix(rnorm(n * 2), n, 2))
-beta <- c(0.5, -0.2, 0.1)
-y <- drop(X %*% beta + rnorm(n))
+x1 <- rnorm(n)
+x2 <- rnorm(n)
+y <- 0.5 + 0.7 * x1 - 0.2 * x2 + rnorm(n)
+d <- data.frame(y = y, x1 = x1, x2 = x2)
 
-fit <- block_jackknife_fit(X, y, n_blocks = 200)
-fit$coefficients
-fit$se
+fit <- bjlm(y ~ x1 + x2, data = d, n_blocks = 200)
+summary(fit)
 ```
 
-Formula interface:
+Example output:
 
-```r
-d <- data.frame(y = y, x1 = X[, 2], x2 = X[, 3])
-fit2 <- bjlm(y ~ x1 + x2, data = d, n_blocks = 200)
-summary(fit2)
+```text
+Call:
+bjlm(formula = y ~ x1 + x2, data = d, n_blocks = 200)
+
+Coefficients:
+             Estimate Jackknife SE z value Pr(>|z|)    
+(Intercept)  0.493175     0.006641   74.26   <2e-16 ***
+x1           0.686438     0.007263   94.51   <2e-16 ***
+x2          -0.196584     0.007320  -26.86   <2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 1.0071 on 19997 degrees of freedom
+Jackknife blocks: 200
 ```
